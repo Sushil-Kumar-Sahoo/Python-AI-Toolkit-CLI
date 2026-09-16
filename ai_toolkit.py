@@ -1,50 +1,80 @@
 import argparse
 import os 
 from dotenv import find_dotenv,load_dotenv
+import sys
 from google import genai
+from google.genai import types
+
 
 load_dotenv(find_dotenv(".env"))
-def create_chat_session(client):
-    chat = client.chats.create(
-        model="gemini-3.6-flash"
-    )
-    return chat
+def content_generation(client,content):
+    try:
+        print("Processing your prompt...")
+        response = client.models.generate_content(
+            model="gemini-3.6-flash",
+            contents=content,
+            config =types.GenerateContentConfig(
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
+            )
+        )
+        return response
+    except Exception as err:
+        print(f"API Error: Failed to generate content. Details: {err}")
+        sys.exit(1)
+        
+def display_response(response):
+    print("\n" + "=" * 70)
+    print("                         AI RESPONSE")
+    print("=" * 70)
+    print(response.text.strip())
+    print("=" * 70 + "\n")
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--text",help="Write your text here...")
-    parser.add_argument("--task",help="What do you want to (summarize,translate,sentiment)")  
+    parser.add_argument("--task",required=True,help="What do you want me to do ? ",choices=["summarize","translate","sentiment"])
+    parser.add_argument("--lang",default="english",help="Type any language you want to translate your typed text.")  
+    parser.add_argument("--text",required=True,help="Type your text here...")
     
     args = parser.parse_args()
-    text = args.text
-    task = args.task
+    text = str(args.text)
+    task = str(args.task)
+    task_lang = str(args.lang)
     
-    if task is not None and text is not None:
-        api_key = os.getenv("API_KEY")
-        client = genai.Client(api_key=api_key)
-        chat = create_chat_session(client)
+    
+    api_key = os.getenv("API_KEY")
+    if not api_key:
+        print("Error: API_KEY is missing from your .env file.")
+        sys.exit(1)
         
-        task_clean = task.lower()
-        
-        if task_clean == "summarize":
+    client = genai.Client(api_key=api_key)
+    
+    # cleaning texts and validating
+    task_clean = task.lower()
+    
+    text = text.strip()
+    if len(text) < 1 :
+        print("your text field looks like empty")
+        sys.exit(1)
+    
+    match task_clean:
+        case "summarize":
             prompt = f"Summarize the following text into key bullet points,capturing only the essential facts and action items \n\n{text}"
-            response = chat.send_message(prompt)
-            print(response.text)
+            response = content_generation(client,prompt)
+            display_response(response)
             
-        elif task_clean == "translate":
-            prompt = f"Translate the following text to  hindi:\n\n{text}"
-            response = chat.send_message(prompt)
-            print(response.text)            
+        case "translate":
+            prompt = f"""Output ONLY the translated text without conversational intro phrases. 
+                        Translate the following text into {task_lang}::\n\n{text}"""
+            response = content_generation(client,prompt)
+            display_response(response)
+
         
-        elif task_clean == "sentiment" :
-            prompt = f"Analyze the sentiment of the following text (Positive, Negative, or Neutral):\n\n{text}"
-            response = chat.send_message(prompt)
-            print(response.text)            
-            
-        else:
-            print(f"Sorry, Entered task name invalid{task} !") 
-    else:
-        enter = task if task is not None else text
-        print(enter)  
+        case "sentiment" :
+            prompt = f"Respond ONLY with one word: POSITIVE, NEGATIVE, or NEUTRAL. Do not include extra commentary.:\n\n{text}"
+            response = content_generation(client,prompt)
+            display_response(response)
+
+
+
 
     
